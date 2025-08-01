@@ -3,7 +3,7 @@ import re
 import os
 
 def clean_article_text(text):
-    text = re.sub(r'(\w+)-\s*\n\s*(\w+)', r'\1\2', text)
+    text = re.sub(r'(\w+)-\s*\n\s*(\w+)', r'\1\2', text) 
     text = re.sub(r'(\w+)-\s+(\w+)', r'\1\2', text)
 
     replacements = {
