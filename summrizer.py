@@ -27,15 +27,34 @@ def clean_truncated_heading(heading):
     return heading
 
 def clean_article_text(text):
+    # Remove common junk
+    junk_patterns = [
+        r"(?i)^follow us.*",
+        r"https?://\S+",
+        r"(?i)vol\.\s*\d+\s*no\.\s*\d+",
+        r"(?i)^page\s+\d+",
+    ]
+    for pattern in junk_patterns:
+        text = re.sub(pattern, '', text)
+
+    # Remove excess whitespace
     text = re.sub(r"\n{2,}", '\n', text)
     text = re.sub(r"[ \t]{2,}", ' ', text)
-    patterns = [
-        r"(?i)^.*(Agence France-Presse|Press Trust of India|Reuters|PTI)\s*",
-        r"(?i)\bFULL REPORT\b", r"(?i)\b(TEHRAN|NEW DELHI|MUMBAI|CHENNAI|HYDERABAD)\b[,:\s]*",
-        r"(?i)^.*?(By\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b", r"(?i)^Page\s+\d+",
-    ]
-    for pattern in patterns:
-        text = re.sub(pattern, '', text)
+
+    # Fix common typos
+    typo_fixes = {
+        "no-fy": "no-fly",
+        "kick of": "kick off",
+        "fowers": "flowers",
+        "s Ganderbal": "’s Ganderbal",
+        "oors": "floors",
+        "oicials": "officials",
+        "overthe": "over the",
+        "arrangement,which": "arrangement, which"
+    }
+    for wrong, correct in typo_fixes.items():
+        text = text.replace(wrong, correct)
+
     return text.strip()
 
 def extract_metadata(text):
@@ -94,13 +113,6 @@ def generate_heading(article_text):
 
 def summarize_article(article_text, max_points=5):
     article_text = clean_article_text(article_text)
-    typo_fixes = {
-        "ash oods": "flash floods", "itsworkers": "its workers", "TelegraphAct": "Telegraph Act",
-        "SigachiIndustries": "Sigachi Industries", "rollvision": "roll revision", "ofGhana": "of Ghana"
-    }
-    for wrong, correct in typo_fixes.items():
-        article_text = article_text.replace(wrong, correct)
-
     sentences = spacy_sent_tokenize(article_text)
     chunks = [" ".join(sentences[i:i+6]) for i in range(0, len(sentences), 6)]
     summary_points = []
@@ -139,10 +151,11 @@ def process_file(file_path):
 
     for article in articles:
         cleaned_article = clean_article_text(article)
-        heading = generate_heading(article)
-        summary_points = summarize_article(article)
-        summary_paragraph = generate_summary_paragraph(article)
-        hashtags = generate_hashtags(article)
+        heading = generate_heading(cleaned_article)
+        summary_points = summarize_article(cleaned_article)
+        summary_paragraph = generate_summary_paragraph(cleaned_article)
+        hashtags = generate_hashtags(cleaned_article)
+        newspaper, date, city = extract_metadata(cleaned_article)
 
         if summary_points:
             results.append({
@@ -150,7 +163,10 @@ def process_file(file_path):
                 "summary_points": summary_points,
                 "summary_paragraph": summary_paragraph,
                 "hashtags": hashtags,
-                "article_text": cleaned_article
+                "article_text": cleaned_article,
+                "newspaper": newspaper,
+                "date": date,
+                "city": city
             })
     return results
 
@@ -173,7 +189,10 @@ def save_to_mongodb(summaries, input_path=None, mongo_uri="mongodb://localhost:2
             "hashtags": entry["hashtags"],
             "article_text": entry["article_text"],
             "source_file": input_path,
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.utcnow(),
+            "newspaper": entry["newspaper"],
+            "date": entry["date"],
+            "city": entry["city"]
         }
         collection.update_one({"_id": doc_id}, {"$set": doc}, upsert=True)
 
